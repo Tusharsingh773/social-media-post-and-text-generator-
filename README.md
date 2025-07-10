@@ -1,48 +1,53 @@
+!pip install transformers gradio
 import gradio as gr
-import openai
-from google.colab import userdata
-import os
+from transformers import pipeline
+import random
+caption_generator = pipeline("text-generation", model="gpt2")
+emoji_dict = {
+    "positive": ["😊", "🌟", "🔥", "💪", "🚀", "✨"],
+    "negative": ["😢", "😞", "💔", "😠", "😓"],
+    "neutral": ["🙂", "😐", "🧐", "🤔", "😶"]
+}
 
-# Initialize OpenAI API
-# Make sure to add your OpenAI API key to Colab Secrets with the name 'OPENAI_API_KEY'
-openai.api_key = userdata.get('OPENAI_API_KEY')
+sentiment_pipeline = pipeline("sentiment-analysis")
 
-def generate_post_openai(theme, tone, platform):
-    """
-    Generate a social media caption based on input theme, tone, and platform using OpenAI API.
-    """
-    if not openai.api_key:
-        return "Error: OpenAI API key not found. Please add it to Colab Secrets."
+def get_emojis(text):
+    label = sentiment_pipeline(text)[0]['label'].lower()
+    return ''.join(random.sample(emoji_dict.get(label, ["🙂"]), 3))
+def get_hashtags(prompt, platform):
+    words = prompt.lower().split()
+    tags = ["#" + word.replace(" ", "") for word in words if len(word) > 3]
 
-    prompt = (f"Create a {tone} social media post and caption for {platform} about '{theme}'. "
-              f"Ensure it aligns with {platform}'s audience style.")
+    platform_tags = {
+        "Instagram": ["#instadaily", "#igers", "#picoftheday"],
+        "LinkedIn": ["#career", "#leadership", "#networking"],
+        "Twitter": ["#tweet", "#trending", "#news"]
+    }
 
-    try:
-        response = openai.Completion.create(
-            engine="text-davinci-003",  # You can use other engines as well
-            prompt=prompt,
-            max_tokens=150,
-            temperature=0.7
-        )
+    return " ".join(tags[:5] + random.sample(platform_tags[platform], 2))
+    def generate_post(prompt, platform):
+    # Generate caption
+    caption = caption_generator(prompt, max_length=50, num_return_sequences=1)[0]['generated_text']
 
-        result = response.choices[0].text.strip()
-        return result
+    # Generate emojis
+    emojis = get_emojis(caption)
 
-    except Exception as e:
-        return f"Error: {str(e)}"
+    # Generate hashtags
+    hashtags = get_hashtags(prompt, platform)
 
-# Gradio interface
-with gr.Blocks() as app:
-    gr.Markdown("# Social Media Post & Caption Generator (using OpenAI)")
+    return caption.strip(), emojis, hashtagsinterface = gr.Interface(
+    fn=generate_post,
+    inputs=[
+        gr.Textbox(label="Enter keyword or theme"),
+        gr.Radio(["Instagram", "LinkedIn", "Twitter"], label="Choose Platform")
+    ],
+    outputs=[
+        gr.Textbox(label="Generated Caption"),
+        gr.Textbox(label="Emojis"),
+        gr.Textbox(label="Hashtags")
+    ],
+    title="Social Media Post & Caption Generator",
+    description="Generate catchy captions, relevant hashtags, and emojis based on your theme!"
+)
 
-    theme = gr.Textbox(label="Theme/Topic(What You Want to Generate )", placeholder="E.g., Travel to Paris, New Tech Gadget")
-    tone = gr.Radio(["Casual", "Professional", "Witty", "Inspirational"], label="Tone", value="Casual")
-    platform = gr.Dropdown(["Instagram", "Twitter", "LinkedIn", "Facebook"], label="Platform", value="Instagram")
-
-    generate_button = gr.Button("Generate Post")
-    output = gr.Textbox(label="Generated Post and Caption")
-
-    generate_button.click(generate_post_openai, [theme, tone, platform], output)
-
-# Launch the app
-app.launch(debug=True)
+interface.launch()
